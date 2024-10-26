@@ -28,7 +28,7 @@ export interface Incident {
 }
 
 export interface Metadata {
-	isoTimestamp: string | null;
+	timestamp: DateTime;
 	openIncidents: number;
 }
 
@@ -37,7 +37,7 @@ export interface FireData {
 	incidents: Incident[];
 }
 
-function parseApparatusStatus(className: string): ApparatusStatus {
+export function parseApparatusStatus(className: string): ApparatusStatus {
 	switch (className) {
 		case 'nrt':
 			return 'Enroute';
@@ -50,7 +50,7 @@ function parseApparatusStatus(className: string): ApparatusStatus {
 		case 'dispatched':
 			return 'Dispatched';
 		default:
-			throw new Error('Invalid apparatus status');
+			return 'Unknown';
 	}
 }
 
@@ -75,7 +75,7 @@ function parseIncident(data: HTMLElement): Incident {
 	const elements = data.childNodes.filter(
 		(el) => el.textContent.length === 0 || el.textContent.trim().length !== 0
 	);
-	console.log(elements.map((element) => element.textContent));
+	console.log(elements);
 	if (elements.length !== 7) {
 		throw new Error('Invalid incident data');
 	}
@@ -95,17 +95,31 @@ function parseIncident(data: HTMLElement): Incident {
 	return { number, code, parsedCode, alarm, enroute, arrive, address, assignedApparatus };
 }
 
+// Rate limit to once every 1 second
+let lastQuery = DateTime.fromMillis(0);
+let lastResult: HTMLElement | null = null;
+
 async function queryFireApi(): Promise<HTMLElement> {
-	// @ts-expect-error - We are on server side, process is available
-	process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-	const response = await fetch('https://fire.lexingtonky.gov//open/status/status.htm');
-	// @ts-expect-error - We are on server side, process is available
-	process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1';
-	if (!response.ok) {
-		throw new Error(`Failed to fetch data: ${response.statusText}`);
+	if (DateTime.now().diff(lastQuery).as('seconds') < 1) {
+		return lastResult!;
 	}
-	const text = await response.text();
-	return parse(text);
+
+	try {
+		// @ts-expect-error - We are on server side, process is available
+		process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+		const response = await fetch('https://fire.lexingtonky.gov//open/status/status.htm');
+		if (!response.ok) {
+			throw new Error(`Failed to fetch data: ${response.statusText}`);
+		}
+		const text = await response.text();
+		const element = parse(text);
+		lastQuery = DateTime.now();
+		lastResult = element;
+		return element;
+	} finally {
+		// @ts-expect-error - We are on server side, process is available
+		process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1';
+	}
 }
 
 function getIncidents(documents: HTMLElement): Incident[] {
@@ -130,15 +144,15 @@ function getMetadata(documents: HTMLElement): Metadata {
 	if (!timestampMatch || !incidentsMatch) {
 		throw new Error('Invalid metadata');
 	}
-	const isoTimestamp = DateTime.fromFormat(
+	const timestamp = DateTime.fromFormat(
 		`${timestampMatch[1]} - ${timestampMatch[2]}`,
 		'M/d/y - H:m:s',
 		{
 			zone: 'America/New_York'
 		}
-	).toISO();
+	);
 	const openIncidents = Number(incidentsMatch[1]);
-	return { isoTimestamp, openIncidents };
+	return { timestamp, openIncidents };
 }
 
 export async function getFireData(): Promise<FireData> {

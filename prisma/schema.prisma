@@ -1,0 +1,44 @@
+datasource db {
+    provider = "sqlite"
+    url      = "file:./db.sqlite"
+}
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+model apparatus {
+    prefix              String
+    number              String
+    lastSeen            DateTime
+    apparatusAssignment apparatusAssignment[]
+    incidentsNumber     Int?
+
+    @@id([prefix, number])
+}
+
+model apparatusAssignment {
+    apparatus       apparatus @relation(fields: [apparatusPrefix, apparatusNumber], references: [prefix, number])
+    incident        incidents @relation(fields: [incidentsNumber], references: [number])
+    status          String
+    active          Boolean
+    lastUpdate      DateTime
+    apparatusPrefix String
+    apparatusNumber String
+    incidentsNumber Int
+
+    @@id([apparatusPrefix, apparatusNumber, incidentsNumber])
+}
+
+model incidents {
+    number              Int                   @id @default(autoincrement())
+    code                String
+    parsedCode          String?
+    alarm               Int
+    enroute             String?
+    arrive              String?
+    address             String
+    active              Boolean
+    lastUpdate          DateTime
+    apparatusAssignment apparatusAssignment[]
+}

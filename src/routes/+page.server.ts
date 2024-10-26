@@ -1,8 +1,8 @@
-import { getFireData } from '$lib/fire-api';
+import { getFireDataWithCache } from '$lib/load-data';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
 	return {
-		fireData: await getFireData()
+		fireData: await getFireDataWithCache()
 	};
 };
